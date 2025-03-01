@@ -19,35 +19,56 @@ class MaxDamagePlayer(Player):
             return self.choose_random_move(battle)
 
 class RuleBasedPokemonAI(Player):
-    type_chart = {
+    def_type_chart = {
         'normal': {'weak': ['fighting'], 'strong': [], 'immune': ['ghost']},
-        'fire': {'weak': ['water', 'ground', 'rock'], 'strong': ['grass', 'ice', 'bug', 'steel'], 'immune': []},
-        'water': {'weak': ['grass', 'electric'], 'strong': ['fire', 'ground', 'rock'], 'immune': []},
-        'grass': {'weak': ['fire', 'ice', 'poison', 'flying', 'bug'], 'strong': ['water', 'ground', 'rock'], 'immune': []},
-        'electric': {'weak': ['ground'], 'strong': ['water', 'flying'], 'immune': []},
-        'ice': {'weak': ['fire', 'fighting', 'rock', 'steel'], 'strong': ['grass', 'ground', 'flying', 'dragon'], 'immune': []},
-        'fighting': {'weak': ['flying', 'psychic', 'fairy'], 'strong': ['normal', 'rock', 'steel', 'ice', 'dark'], 'immune': []},
-        'poison': {'weak': ['ground', 'psychic'], 'strong': ['grass', 'fairy'], 'immune': []},
-        'ground': {'weak': ['water', 'grass', 'ice'], 'strong': ['fire', 'electric', 'poison', 'rock', 'steel'], 'immune': ['electric']},
-        'flying': {'weak': ['electric', 'ice', 'rock'], 'strong': ['grass', 'fighting', 'bug'], 'immune': ['ground']},
-        'psychic': {'weak': ['bug', 'dark', 'ghost'], 'strong': ['fighting', 'poison'], 'immune': []},
-        'bug': {'weak': ['fire', 'flying', 'rock'], 'strong': ['grass', 'psychic', 'dark'], 'immune': []},
-        'rock': {'weak': ['water', 'grass', 'fighting', 'ground', 'steel'], 'strong': ['fire', 'ice', 'flying', 'bug'], 'immune': []},
-        'ghost': {'weak': ['ghost', 'dark'], 'strong': ['psychic', 'ghost'], 'immune': ['normal', 'fighting']},
-        'dragon': {'weak': ['ice', 'dragon', 'fairy'], 'strong': ['dragon'], 'immune': []},
-        'dark': {'weak': ['fighting', 'bug', 'fairy'], 'strong': ['psychic', 'ghost'], 'immune': []},
-        'steel': {'weak': ['fire', 'fighting', 'ground'], 'strong': ['ice', 'rock', 'fairy'], 'immune': ['poison']},
-        'fairy': {'weak': ['poison', 'steel'], 'strong': ['fighting', 'dragon', 'dark'], 'immune': ['dragon']}
+        'fire': {'weak': ['water', 'ground', 'rock'], 'strong': [], 'immune': []},
+        'water': {'weak': ['grass', 'electric'], 'strong': [], 'immune': []},
+        'grass': {'weak': ['fire', 'ice', 'poison', 'flying', 'bug'], 'strong': [], 'immune': []},
+        'electric': {'weak': ['ground'], 'strong': [], 'immune': []},
+        'ice': {'weak': ['fire', 'fighting', 'rock', 'steel'], 'strong': [], 'immune': []},
+        'fighting': {'weak': ['flying', 'psychic', 'fairy'], 'strong': [], 'immune': []},
+        'poison': {'weak': ['ground', 'psychic'], 'strong': [], 'immune': []},
+        'ground': {'weak': ['water', 'grass', 'ice'], 'strong': [], 'immune': ['electric']},
+        'flying': {'weak': ['electric', 'ice', 'rock'], 'strong': [], 'immune': ['ground']},
+        'psychic': {'weak': ['bug', 'dark', 'ghost'], 'strong': [], 'immune': []},
+        'bug': {'weak': ['fire', 'flying', 'rock'], 'strong': [], 'immune': []},
+        'rock': {'weak': ['water', 'grass', 'fighting', 'ground', 'steel'], 'strong': [], 'immune': []},
+        'ghost': {'weak': ['ghost', 'dark'], 'immune': ['normal', 'fighting'], 'strong': [], 'immune': []},
+        'dragon': {'weak': ['ice', 'dragon', 'fairy'], 'strong': [], 'immune': []},
+        'dark': {'weak': ['fighting', 'bug', 'fairy'], 'strong': [], 'immune': []},
+        'steel': {'weak': ['fire', 'fighting', 'ground'], 'strong': [], 'immune': ['poison']},
+        'fairy': {'weak': ['poison', 'steel'], 'strong': [], 'immune': ['dragon']}
+    }
+
+    atk_type_chart = {
+        'normal': {'weak': ['rock', 'steel'], 'strong': [], 'immune': ['ghost']},
+        'fire': {'weak': ['fire','water', 'rock', 'dragon'], 'strong': ['grass', 'ice', 'bug', 'steel'], 'immune': []},
+        'water': {'weak': ['water', 'grass', 'dragon'], 'strong': ['fire', 'ground', 'rock'], 'immune': []},
+        'grass': {'weak': ['fire', 'grass', 'poison', 'flying', 'bug', 'steel'], 'strong': ['water', 'ground', 'rock'], 'immune': []},
+        'electric': {'weak': ['electric', 'grass', 'dragon'], 'strong': ['water', 'flying'], 'immune': ['ground']},
+        'ice': {'weak': ['fire', 'water', 'ice', 'steel'], 'strong': ['grass', 'ground', 'flying', 'dragon'], 'immune': []},
+        'fighting': {'weak': ['poison', 'flying', 'psychic', 'bug', 'fairy'], 'strong': ['normal', 'rock', 'steel', 'ice', 'dark'], 'immune': ['ghost']},
+        'poison': {'weak': ['poison', 'ground', 'rock', 'ghost'], 'strong': ['grass', 'fairy'], 'immune': ['steel']},
+        'ground': {'weak': ['grass', 'bug'], 'strong': ['fire', 'electric', 'poison', 'rock', 'steel'], 'immune': ['flying']},
+        'flying': {'weak': ['electric', 'rock', 'steel'], 'strong': ['grass', 'fighting', 'bug'], 'immune': []},
+        'psychic': {'weak': ['psychic', 'steel'], 'strong': ['fighting', 'poison'], 'immune': ['dark']},
+        'bug': {'weak': ['fire', 'fighting', 'poison', 'flying', 'ghost', 'steel'], 'strong': ['grass', 'psychic', 'dark'], 'immune': []},
+        'rock': {'weak': ['fighting', 'ground', 'steel'], 'strong': ['fire', 'ice', 'flying', 'bug'], 'immune': []},
+        'ghost': {'weak': ['dark'], 'strong': ['psychic', 'ghost'], 'immune': ['normal']},
+        'dragon': {'weak': ['steel'], 'strong': ['dragon'], 'immune': ['fairy']},
+        'dark': {'weak': ['fighting', 'dark', 'fairy'], 'strong': ['psychic', 'ghost'], 'immune': []},
+        'steel': {'weak': ['fire', 'water', 'electric', 'steel'], 'strong': ['ice', 'rock', 'fairy'], 'immune': ['poison']},
+        'fairy': {'weak': ['fire', 'poison', 'steel'], 'strong': ['fighting', 'dragon', 'dark'], 'immune': []}
     }
 
     def calculate_damage_multiplier(self, attack_type, defense_types):
         multiplier = 1.0
         for defense_type in defense_types:
-            if defense_type in self.type_chart[attack_type]['strong']:
+            if defense_type in self.atk_type_chart[attack_type]['strong']:
                 multiplier *= 2.0
-            elif defense_type in self.type_chart[attack_type]['weak']:
+            elif defense_type in self.atk_type_chart[attack_type]['weak']:
                 multiplier *= 0.5
-            elif defense_type in self.type_chart[attack_type]['immune']:
+            elif defense_type in self.atk_type_chart[attack_type]['immune']:
                 multiplier *= 0.0
         return multiplier
 
@@ -71,7 +92,7 @@ class RuleBasedPokemonAI(Player):
         
         # If no attacking moves, switch to another Pokémon
         if battle.available_switches:
-            return self.create_order(random.choice(battle.available_switches))
+           return self.create_order(random.choice(battle.available_switches))
         
         # Default
         return self.choose_random_move(battle)
@@ -93,19 +114,27 @@ class RuleBasedPokemonAI(Player):
                 if score < best_score:
                     best_score = score
                     best_switch = switch
-            
-            if best_switch:
+
+            #If current pokemon is best even if weak it should attack
+            current_pokemon_types = [t.name.lower() for t in battle.active_pokemon.types]
+            current_score = sum(self.calculate_damage_multiplier(opp_type, current_pokemon_types) for opp_type in opponent_types)
+            if current_score == best_score:
+                return self.choose_attack_move(battle)
+            elif best_switch:
                 return self.create_order(best_switch)
         
         return self.choose_random_move(battle)
 
     def choose_move(self,battle):
+        if battle.force_switch:
+            return self.switch_pokemon(battle)
+
         current_pokemon_types = [t.name.lower() for t in battle.active_pokemon.types]
         opponent_types = [t.name.lower() for t in battle.opponent_active_pokemon.types]
         is_weak = False
 
         for type in current_pokemon_types:
-            if any(weak_type in self.type_chart[type]['weak'] for weak_type in opponent_types):
+            if any(weak_type in self.def_type_chart[type]['weak'] for weak_type in opponent_types):
                 is_weak = True
                 break
 
