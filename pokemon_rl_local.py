@@ -9,6 +9,7 @@ import asyncio
 import os
 from poke_env.player.player import Player
 from poke_env.player.random_player import RandomPlayer
+from pokemon_rb_local import RuleBasedPokemonAI
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
@@ -403,11 +404,9 @@ class PokemonRLPlayer(Player):
             if battle.won:
                 reward += 10
                 self.wins += 1
-                print(f"WON battle, total wins: {self.wins}")
             else:
                 reward -= 10
                 self.losses += 1
-                print(f"LOST battle, total losses: {self.losses}")
             return reward
         
         # print("reward based on hp change")
@@ -725,6 +724,8 @@ async def train_model(num_battles=100):
         training=True
     )
 
+    rb_player = RuleBasedPokemonAI()
+
     model_exists = load_model(rl_player.policy_net)
     if model_exists:
         print("Continuing training with existing model")
@@ -739,14 +740,11 @@ async def train_model(num_battles=100):
     
     print(f"Starting training for {num_battles} battles against MaxDamagePlayer...")
     
-    for i in range(0, num_battles, 10):
-        await max_damage_opponent.battle_against(rl_player, n_battles=10)
+    for i in range(num_battles):
+        await rb_player.battle_against(rl_player, n_battles=1)
         await rl_player.battle_end_callback(rl_player.current_battle)
-        if rl_player.battles_played > 0:
-            win_rate = rl_player.n_won_battles / rl_player.battles_played * 100
-            print(f"Completed {rl_player.battles_played} battles, Win rate: {win_rate:.2f}%, Epsilon: {rl_player.epsilon:.2f}")
-        else:
-            print("No battles completed yet")
+    
+    print(f"Win rate: {(rl_player.n_won_battles/rl_player.battles_played * 100):.2f}%, Epsilon: {rl_player.epsilon:.2f}")
     
     save_model(rl_player.policy_net)
     
@@ -758,7 +756,9 @@ async def evaluate_model(num_battles=50):
         training=False, 
         epsilon_start=0.05
     )
-    
+
+    rb_player = RuleBasedPokemonAI()
+
     load_model(rl_player.policy_net)
     
     rl_player.wins = 0
@@ -774,29 +774,29 @@ async def evaluate_model(num_battles=50):
     )
     
     print("Evaluating against Random Player...")
-    await random_opponent.battle_against(rl_player, n_battles=num_battles//2)
+    await max_damage_opponent.battle_against(rl_player, n_battles=num_battles//2)
     random_win_rate = rl_player.n_won_battles / (num_battles) * 100
-    print(f"Win rate against Random Player: {random_win_rate:.2f}%")
+    print(f"Win rate against Max Damage Player: {random_win_rate:.2f}%")
     
     rl_player.wins = 0
     rl_player.losses = 0
     rl_player.battles_played = 0
     
-    print("Evaluating against Max Damage Player...")
-    await max_damage_opponent.battle_against(rl_player, n_battles=num_battles//2)
-    max_damage_win_rate = rl_player.n_won_battles / (num_battles) * 100
+    print("Evaluating against RB Player...")
+    await rb_player.battle_against(rl_player, n_battles=num_battles//2)
+    rb_win_rate = rl_player.n_won_battles / (num_battles) * 100
     print(f"rl won battles: {rl_player.n_won_battles}")
     print(f"num battles: {num_battles}")
-    print(f"Win rate against Max Damage Player: {max_damage_win_rate:.2f}%")
+    print(f"Win rate against RB Player: {rb_win_rate:.2f}%")
 
 
 async def main():
     print("Using local Pokémon Showdown server via environment variables")
     print("Make sure your server is running with: node pokemon-showdown start --no-security")
     
-    rl_player = await train_model(num_battles=1000)
+    rl_player = await train_model(num_battles=50)
 
-    await evaluate_model(num_battles=100)
+    await evaluate_model(num_battles=200)
 
 if __name__ == "__main__":
     asyncio.run(main())
