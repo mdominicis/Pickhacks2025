@@ -37,7 +37,10 @@ class RuleBasedPokemonAI(Player):
         'dragon': {'weak': ['ice', 'dragon', 'fairy'], 'strong': [], 'immune': []},
         'dark': {'weak': ['fighting', 'bug', 'fairy'], 'strong': [], 'immune': []},
         'steel': {'weak': ['fire', 'fighting', 'ground'], 'strong': [], 'immune': ['poison']},
-        'fairy': {'weak': ['poison', 'steel'], 'strong': [], 'immune': ['dragon']}
+        'fairy': {'weak': ['poison', 'steel'], 'strong': [], 'immune': ['dragon']},
+        'three_question_marks' : { 'weak' : [], 'strong' : [], 'immune': []},
+        'stellar' :  { 'weak' : [], 'strong' : [], 'immune': []}
+        
     }
 
     atk_type_chart = {
@@ -58,7 +61,9 @@ class RuleBasedPokemonAI(Player):
         'dragon': {'weak': ['steel'], 'strong': ['dragon'], 'immune': ['fairy']},
         'dark': {'weak': ['fighting', 'dark', 'fairy'], 'strong': ['psychic', 'ghost'], 'immune': []},
         'steel': {'weak': ['fire', 'water', 'electric', 'steel'], 'strong': ['ice', 'rock', 'fairy'], 'immune': ['poison']},
-        'fairy': {'weak': ['fire', 'poison', 'steel'], 'strong': ['fighting', 'dragon', 'dark'], 'immune': []}
+        'fairy': {'weak': ['fire', 'poison', 'steel'], 'strong': ['fighting', 'dragon', 'dark'], 'immune': []},
+        'three_question_marks' : { 'weak' : [], 'strong' : [], 'immune': []},
+        'stellar' :  { 'weak' : [], 'strong' : [], 'immune': []}
     }
 
     def calculate_damage_multiplier(self, attack_type, defense_types):
