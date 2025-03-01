@@ -156,16 +156,20 @@ class PokemonRLPlayer(Player):
         epsilon_decay=0.995,
         batch_size=64,
         target_update=10,
-        state_size=73, #was 128 when 128 it fucks up matrix multiplication 
+        state_size=86, 
         training=True
     ):
+
+        self.training = training
+        self.state_size = state_size
+        self.action_size = 4
+
         super().__init__(
             battle_format=battle_format
         )
         
-        self.training = training
-        self.state_size = state_size
-        self.action_size = 4
+        self.battle_end_callback(self.battle_end_callback)
+        self.battle_callback(self.battle_callback)
         
         self.gamma = gamma
         self.epsilon = epsilon_start
@@ -198,6 +202,33 @@ class PokemonRLPlayer(Player):
         self.last_opponent_hp_fraction = 1.0
         self.last_opponent_status = None
         
+        self.setup_moves_used = {}
+        self.stat_boosts = {"atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        
+        self.setup_move_stats = {
+            "swordsdance": "atk",
+            "dragondance": "atk",
+            "bulkup": "atk",
+            "curse": "atk",
+            "nastyplot": "spa",
+            "tailglow": "spa",
+            "calmmind": "spa",
+            "quiverdance": "spa",
+            "growth": "spa",
+            "workup": "spa",
+            "agility": "spe",
+            "autotomize": "spe",
+            "rockpolish": "spe",
+            "irondefense": "def",
+            "cosmicpower": "def",
+            "cottonguard": "def",
+            "acidarmor": "def",
+            "barrier": "def",
+            "amnesia": "spd",
+            "flamecharge": "spe",
+            "shellsmash": "spe",
+        }
+        
         self.type_list = ["normal", "fire", "water", "electric", "grass", "ice", 
                           "fighting", "poison", "ground", "flying", "psychic", 
                           "bug", "rock", "ghost", "dragon", "dark", "steel", "fairy"]
@@ -205,12 +236,65 @@ class PokemonRLPlayer(Player):
         self.status_list = ["brn", "frz", "par", "psn", "slp", "tox"]
         self.weather_list = ["sun", "rain", "sand", "hail", "harsh_sunshine"]
         
+    def reset_battle_stats(self):
+        self.setup_moves_used = {}
+        self.stat_boosts = {"atk": 0, "def": 0, "spa": 0, "spd": 0, "spe": 0}
+        self.last_active_hp_fraction = 1.0
+        self.last_opponent_hp_fraction = 1.0
+        self.last_opponent_status = None
+    
+    def is_setup_move(self, move):
+        return move.id.lower() in self.setup_move_stats
+    
+    def get_boosted_stat(self, move):
+        return self.setup_move_stats.get(move.id.lower())
+    
+    def update_stat_boosts(self, battle):
+        if battle.active_pokemon:
+            for stat, boost in battle.active_pokemon.boosts.items():
+                if stat in self.stat_boosts:
+                    self.stat_boosts[stat] = boost
+    
+    def should_use_setup_move(self, move):
+        if not self.is_setup_move(move):
+            return True
+        
+        stat = self.get_boosted_stat(move)
+        if not stat:
+            return True
+        
+        move_count = self.setup_moves_used.get(move.id, 0)
+        
+        current_boost = self.stat_boosts.get(stat, 0)
+        
+        if current_boost >= 6:
+            return False
+            
+        if current_boost >= 4:
+            return False
+            
+        if move_count >= 2:
+            return random.random() < max(0.3 - (move_count - 2) * 0.1, 0.05)
+            
+        return True
+    
+    def track_move_usage(self, move):
+        if self.is_setup_move(move):
+            self.setup_moves_used[move.id] = self.setup_moves_used.get(move.id, 0) + 1
+            
+            stat = self.get_boosted_stat(move)
+            if stat:
+                boost_amount = 2
+                if move.id.lower() in ["growth", "workup"]:
+                    boost_amount = 1
+                
+                self.stat_boosts[stat] = min(self.stat_boosts.get(stat, 0) + boost_amount, 6)
+        
     def calculate_type_effectiveness(self, move_type, defender_types):
         if not move_type or not defender_types:
             return 1.0
             
         effectiveness = 1.0
-        #defender
         for def_type in defender_types:
             if def_type and move_type in TYPE_CHART and def_type in TYPE_CHART[move_type]:
                 effectiveness *= TYPE_CHART[move_type][def_type] 
@@ -279,6 +363,11 @@ class PokemonRLPlayer(Player):
         features.append(len(battle.team) / 6)
         features.append(len(battle.opponent_team) / 6)
         
+        for stat in ["atk", "def", "spa", "spd", "spe"]:
+            boost = self.stat_boosts.get(stat, 0)
+            boost_normalized = (boost + 6) / 12
+            features.append(boost_normalized)
+        
         for i in range(4):
             if i < len(battle.available_moves):
                 move = battle.available_moves[i]
@@ -293,9 +382,12 @@ class PokemonRLPlayer(Player):
                 accuracy = move.accuracy / 100 if move.accuracy else 1.0
                 is_status = 1.0 if move.category == "status" else 0.0
                 
-                features.extend([power, effectiveness_norm, accuracy, is_status])
+                is_setup = 1.0 if self.is_setup_move(move) else 0.0
+                setup_count = min(self.setup_moves_used.get(move.id, 0), 5) / 5
+                
+                features.extend([power, effectiveness_norm, accuracy, is_status, is_setup, setup_count])
             else:
-                features.extend([0, 0, 0, 0])
+                features.extend([0, 0, 0, 0, 0, 0])
         
         weather_one_hot = [0] * 5
         if battle.weather:
@@ -306,45 +398,65 @@ class PokemonRLPlayer(Player):
                 pass
         features.extend(weather_one_hot)
         
+        assert len(features) == self.state_size, f"Feature size mismatch: {len(features)} != {self.state_size}"
+        
         return np.array(features, dtype=np.float32)
     
     def calc_reward(self, battle):
+        print("********** CALCULATING REWARD **********")
         reward = 0
         
-        if battle.finished:
-            if battle.won:
+        if battle.winner is not None:
+            print(f"Battle ended with winner: {battle.winner}, username: {self.username}")
+            if battle.winner == self.username:
+                print("reward is going up")
                 reward += 10
                 self.wins += 1
+                print(f"WON battle, total wins: {self.wins}")
             else:
+                print("reward is going down")
                 reward -= 10
                 self.losses += 1
+                print(f"LOST battle, total losses: {self.losses}")
             return reward
         
-        current_active_hp_fraction = battle.active_pokemon.current_hp / battle.active_pokemon.max_hp if battle.active_pokemon else 0
+        print("reward based on hp change")
+        current_active_hp_fraction = 0
+        if battle.active_pokemon:
+            current_active_hp_fraction = battle.active_pokemon.current_hp / battle.active_pokemon.max_hp
         
-        if hasattr(self, 'last_active_hp_fraction'):
-            hp_change = current_active_hp_fraction - self.last_active_hp_fraction
-            reward -= hp_change * 2
+        hp_change = current_active_hp_fraction - self.last_active_hp_fraction
+        reward -= hp_change * 2
         self.last_active_hp_fraction = current_active_hp_fraction
         
-        current_opponent_hp_fraction = battle.opponent_active_pokemon.current_hp / battle.opponent_active_pokemon.max_hp if battle.opponent_active_pokemon and battle.opponent_active_pokemon.current_hp is not None else 1.0
+        current_opponent_hp_fraction = 1.0
+        if battle.opponent_active_pokemon and battle.opponent_active_pokemon.current_hp is not None:
+            current_opponent_hp_fraction = battle.opponent_active_pokemon.current_hp / battle.opponent_active_pokemon.max_hp
         
-        if hasattr(self, 'last_opponent_hp_fraction'):
-            opp_hp_change = current_opponent_hp_fraction - self.last_opponent_hp_fraction
-            reward -= opp_hp_change * 2
+        opp_hp_change = current_opponent_hp_fraction - self.last_opponent_hp_fraction
+        reward -= opp_hp_change * 2
         self.last_opponent_hp_fraction = current_opponent_hp_fraction
         
+        print("reward based on fainting")
         if battle.opponent_active_pokemon and battle.opponent_active_pokemon.fainted:
             reward += 2
         if battle.active_pokemon and battle.active_pokemon.fainted:
             reward -= 2
+        
+        print("reward based on stat boosts")
+        for stat, boost in self.stat_boosts.items():
+            if boost > 0:
+                if boost <= 2:
+                    reward += 0.1 * boost
+                else:
+                    reward += 0.2 + 0.05 * (boost - 2)
         
         status_value = {
             'brn': 0.5, 'frz': 1.0, 'par': 0.5, 
             'psn': 0.3, 'slp': 0.8, 'tox': 0.7
         }
         if battle.opponent_active_pokemon and battle.opponent_active_pokemon.status:
-            if not hasattr(self, 'last_opponent_status') or self.last_opponent_status != battle.opponent_active_pokemon.status:
+            if self.last_opponent_status != battle.opponent_active_pokemon.status:
                 reward += status_value.get(battle.opponent_active_pokemon.status, 0.3)
         self.last_opponent_status = battle.opponent_active_pokemon.status if battle.opponent_active_pokemon else None
         
@@ -378,6 +490,15 @@ class PokemonRLPlayer(Player):
         
         if active_pokemon and active_pokemon.status:
             return random.random() < 0.4
+            
+        if sum(self.stat_boosts.values()) >= 4:
+            can_deal_damage = False
+            for move in battle.available_moves:
+                if move.base_power > 60 and not self.is_setup_move(move):
+                    can_deal_damage = True
+                    break
+            if not can_deal_damage:
+                return random.random() < 0.6
         
         return False
 
@@ -425,9 +546,11 @@ class PokemonRLPlayer(Player):
         return 1.0
     
     def choose_move(self, battle):
+        self.update_stat_boosts(battle)
 
         if battle.finished:
-          return self.choose_random_move(battle)
+            return self.choose_random_move(battle)
+            
         if self._should_switch(battle):
             return self._choose_switch(battle)
             
@@ -439,9 +562,14 @@ class PokemonRLPlayer(Player):
         if not available_moves:
             return self.choose_random_move(battle)
 
+        valid_moves = [move for move in available_moves if self.should_use_setup_move(move)]
+        
+        if not valid_moves:
+            valid_moves = available_moves
+
         if self.training and random.random() < self.epsilon:
             move_scores = []
-            for move in available_moves:
+            for move in valid_moves:
                 base_score = min(move.base_power, 100)
                 
                 if battle.opponent_active_pokemon and move.type:
@@ -450,6 +578,20 @@ class PokemonRLPlayer(Player):
                 
                 if move.category == "status" and random.random() < 0.3:
                     base_score += 40
+                
+                if self.is_setup_move(move):
+                    stat = self.get_boosted_stat(move)
+                    current_boost = self.stat_boosts.get(stat, 0)
+                    
+                    if current_boost == 0:
+                        base_score += 60
+                    elif current_boost == 2:
+                        base_score += 40
+                    else:
+                        base_score += 20
+                    
+                    uses = self.setup_moves_used.get(move.id, 0)
+                    base_score -= uses * 10
                     
                 base_score = max(base_score, 0.1)
                 move_scores.append(base_score)
@@ -461,34 +603,42 @@ class PokemonRLPlayer(Player):
             if sum_prob > 0:
                 probabilities = [p/sum_prob for p in probabilities]
             else:
-                # If all probabilities are zero (shouldn't)
                 probabilities = [1.0/len(probabilities) for _ in probabilities]
 
-            move_idx = np.random.choice(len(available_moves), p=probabilities)
-            move = available_moves[move_idx]
-            action_idx = move_idx
+            move_idx = np.random.choice(len(valid_moves), p=probabilities)
+            move = valid_moves[move_idx]
+            action_idx = available_moves.index(move)
         else:
-            with torch.no_grad():
-                state_tensor = torch.tensor(np.array([state], dtype=np.float32), dtype=torch.float).to(device)
-                q_values = self.policy_net(state_tensor)
+            try:
+                with torch.no_grad():
+                    state_tensor = torch.tensor(state, dtype=torch.float).to(device)
+                    q_values = self.policy_net(state_tensor)
 
-                mask = torch.ones(self.action_size, device=device) * -1e9
-                for i, move in enumerate(available_moves):
-                    mask[i] = 0
-                q_values = q_values + mask
+                    mask = torch.ones(self.action_size, device=device) * -1e9
+                    for i, move in enumerate(available_moves):
+                        if move in valid_moves:
+                            mask[i] = 0
+                    q_values = q_values + mask
 
-                action_idx = q_values.max(1)[1].item()
-                if action_idx < len(available_moves):
-                    move = available_moves[action_idx]
-                else:
-                    move_scores = [(m, min(m.base_power, 100) * 
-                                  self.calculate_type_effectiveness(m.type, battle.opponent_active_pokemon.types) 
-                                  if battle.opponent_active_pokemon else min(m.base_power, 100)) 
-                                  for m in available_moves]
-                    move = max(move_scores, key=lambda x: x[1])[0]
-                    action_idx = available_moves.index(move)
+                    action_idx = q_values.max(0)[1].item()
+                    
+                    if action_idx >= len(available_moves):
+                        move = max(valid_moves, 
+                                key=lambda m: m.base_power * self.calculate_type_effectiveness(
+                                    m.type, battle.opponent_active_pokemon.types if battle.opponent_active_pokemon else []))
+                        action_idx = available_moves.index(move)
+                    else:
+                        move = available_moves[action_idx]
+            except Exception as e:
+                print(f"Error in policy selection: {e}")
+                move = max(valid_moves, 
+                        key=lambda m: m.base_power * self.calculate_type_effectiveness(
+                            m.type, battle.opponent_active_pokemon.types if battle.opponent_active_pokemon else []))
+                action_idx = available_moves.index(move)
 
         self.last_action = action_idx
+        
+        self.track_move_usage(move)
 
         if self.training and self.epsilon > self.epsilon_end:
             self.epsilon *= self.epsilon_decay
@@ -531,12 +681,13 @@ class PokemonRLPlayer(Player):
         self.target_net.load_state_dict(self.policy_net.state_dict())
     
     async def battle_end_callback(self, battle):
+        print("in battle_end_callback")
         reward = self.calc_reward(battle)
         self.rewards.append(reward)
         
         if self.current_state is not None and self.last_action is not None:
             done = True
-            next_state = self.current_state
+            next_state = self.embed_battle(battle) 
             self.memory.push(self.current_state, self.last_action, reward, next_state, done)
         
         if self.training:
@@ -548,7 +699,7 @@ class PokemonRLPlayer(Player):
             self.update_target_network()
             
         if self.battles_played % 10 == 0:
-            win_rate = self.wins / self.battles_played * 100
+            win_rate = self.n_won_battles / self.battles_played * 100
             print(f"Battles: {self.battles_played}, Win rate: {win_rate:.2f}%, Epsilon: {self.epsilon:.2f}")
         
         self.current_state = None
@@ -556,8 +707,11 @@ class PokemonRLPlayer(Player):
         self.last_active_hp_fraction = 1.0
         self.last_opponent_hp_fraction = 1.0
         self.last_opponent_status = None
+
+        self.reset_battle_stats()
     
     async def battle_callback(self, battle):
+        print("in battle_callback")
         if self.current_state is not None and self.last_action is not None:
             reward = self.calc_reward(battle)
             
@@ -568,6 +722,7 @@ class PokemonRLPlayer(Player):
             
             if self.training:
                 self.learn()
+            self.current_state = next_state
 
 def save_model(model, path="pokemon_rl_model.pt"):
     torch.save(model.state_dict(), path)
@@ -604,7 +759,7 @@ async def train_model(num_battles=100):
         await max_damage_opponent.battle_against(rl_player, n_battles=10)
         
         if rl_player.battles_played > 0:
-            win_rate = rl_player.wins / rl_player.battles_played * 100
+            win_rate = rl_player.n_won_battles / rl_player.battles_played * 100
             print(f"Completed {rl_player.battles_played} battles, Win rate: {win_rate:.2f}%, Epsilon: {rl_player.epsilon:.2f}")
         else:
             print("No battles completed yet")
@@ -636,7 +791,7 @@ async def evaluate_model(num_battles=50):
     
     print("Evaluating against Random Player...")
     await random_opponent.battle_against(rl_player, n_battles=num_battles//2)
-    random_win_rate = rl_player.wins / (num_battles//2) * 100
+    random_win_rate = rl_player.n_won_battles / (num_battles) * 100
     print(f"Win rate against Random Player: {random_win_rate:.2f}%")
     
     rl_player.wins = 0
@@ -645,7 +800,9 @@ async def evaluate_model(num_battles=50):
     
     print("Evaluating against Max Damage Player...")
     await max_damage_opponent.battle_against(rl_player, n_battles=num_battles//2)
-    max_damage_win_rate = rl_player.wins / (num_battles//2) * 100
+    max_damage_win_rate = rl_player.n_won_battles / (num_battles) * 100
+    print(f"rl won battles: {rl_player.n_won_battles}")
+    print(f"num battles: {num_battles}")
     print(f"Win rate against Max Damage Player: {max_damage_win_rate:.2f}%")
 
 
