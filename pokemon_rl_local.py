@@ -190,8 +190,6 @@ class PokemonRLPlayer(Player):
         self.last_action = None
         
         self.rewards = []
-        self.wins = 0
-        self.losses = 0
         
         self.last_active_hp_fraction = 1.0
         self.last_opponent_hp_fraction = 1.0
@@ -402,14 +400,21 @@ class PokemonRLPlayer(Player):
         
         if battle.finished:
             if battle.won:
-                reward += 10
-                self.wins += 1
+                reward += 30
             else:
-                reward -= 10
-                self.losses += 1
+                reward -= 30
             return reward
         
-        # print("reward based on hp change")
+        for mon in battle.team.values():
+            reward += mon.current_hp_fraction * 1
+            if mon.fainted:
+                reward -= 1
+            elif mon.status is not None:
+                reward -= 1
+
+        reward += (6 - len(battle.team)) * 1
+        
+        # # print("reward based on hp change")
         # current_active_hp_fraction = 0
         # if battle.active_pokemon:
         #     current_active_hp_fraction = battle.active_pokemon.current_hp / battle.active_pokemon.max_hp
@@ -426,27 +431,27 @@ class PokemonRLPlayer(Player):
         # reward -= opp_hp_change * 2
         # self.last_opponent_hp_fraction = current_opponent_hp_fraction
         
-        if battle.opponent_active_pokemon and battle.opponent_active_pokemon.fainted:
-            reward += 2
-        if battle.active_pokemon and battle.active_pokemon.fainted:
-            reward -= 2
+        # if battle.opponent_active_pokemon and battle.opponent_active_pokemon.fainted:
+        #     reward += 2
+        # if battle.active_pokemon and battle.active_pokemon.fainted:
+        #     reward -= 2
         
         # print("reward based on stat boosts")
-        # for stat, boost in self.stat_boosts.items():
-        #     if boost > 0:
-        #         if boost <= 2:
-        #             reward += 0.1 * boost
-        #         else:
-        #             reward += 0.2 + 0.05 * (boost - 2)
+        for stat, boost in self.stat_boosts.items():
+            if boost > 0:
+                if boost <= 2:
+                    reward += 0.1 * boost
+                else:
+                    reward += 0.2 + 0.05 * (boost - 2)
         
-        # status_value = {
-        #     'brn': 0.5, 'frz': 1.0, 'par': 0.5, 
-        #     'psn': 0.3, 'slp': 0.8, 'tox': 0.7
-        # }
-        # if battle.opponent_active_pokemon and battle.opponent_active_pokemon.status:
-        #     if self.last_opponent_status != battle.opponent_active_pokemon.status:
-        #         reward += status_value.get(battle.opponent_active_pokemon.status, 0.3)
-        # self.last_opponent_status = battle.opponent_active_pokemon.status if battle.opponent_active_pokemon else None
+        status_value = {
+            'brn': 0.5, 'frz': 1.0, 'par': 0.5, 
+            'psn': 0.3, 'slp': 0.8, 'tox': 0.7
+        }
+        if battle.opponent_active_pokemon and battle.opponent_active_pokemon.status:
+            if self.last_opponent_status != battle.opponent_active_pokemon.status:
+                reward += status_value.get(battle.opponent_active_pokemon.status, 0.3)
+        self.last_opponent_status = battle.opponent_active_pokemon.status if battle.opponent_active_pokemon else None
         
         return reward
     
@@ -627,7 +632,9 @@ class PokemonRLPlayer(Player):
 
         if self.training and self.epsilon > self.epsilon_end:
             self.epsilon *= self.epsilon_decay
+
         await self.battle_callback(self.current_battle)
+
         return self.create_order(move)
     
     def learn(self):
@@ -794,7 +801,7 @@ async def main():
     print("Using local Pokémon Showdown server via environment variables")
     print("Make sure your server is running with: node pokemon-showdown start --no-security")
     
-    rl_player = await train_model(num_battles=50)
+    rl_player = await train_model(num_battles=500)
 
     await evaluate_model(num_battles=200)
 
