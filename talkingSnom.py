@@ -86,7 +86,7 @@ class MaxDamagePlayer(Player):
 async def main():
     #Uses my testing account
     player = MaxDamagePlayer(
-        account_configuration=AccountConfiguration("talking snom", "pickhacks2025"),
+        account_configuration=AccountConfiguration("AIvysaur_xx xx_X_", "pickhacks2025"),
         )
 
     #Challenges me
