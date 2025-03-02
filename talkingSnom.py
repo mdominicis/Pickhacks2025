@@ -41,18 +41,46 @@ class MaxDamagePlayer(Player):
             await self.ps_client.send_message(message, battle.battle_tag)
 
     #Basic trash talk
-    async def trash_talk(self,battle):
-        last_turn = battle.observations[battle._turn-1]
-        end_prompt = ". Do this in one paragraph and only use dialogue, do not describe your actions. do not speak out of character."
+    async def trash_talk(self, battle):
+        last_turn = battle.observations[battle._turn - 1]
+        end_prompt = ". Do this in one paragraph and only use dialogue, do not describe your actions. Do not speak out of character."
+
+        current_active_pokemon = battle.active_pokemon._name
+        current_opponent_pokemon = battle.opponent_active_pokemon._name
+
+        message = None
+
+        # First turn message
         if battle._turn == 1:
-            #FIRST TURN MESSAGE
-            message = chat.send_message("Pretend you are a Pokemon trainer. Challenge me to a pokemon battle. Your first pokemon is "+battle.active_pokemon._name+end_prompt)
+            message = chat.send_message(
+                f"Pretend you are a Pokémon trainer. Challenge me to a Pokémon battle. Your first Pokémon is {current_active_pokemon}{end_prompt}"
+            )
+
+        # Opponent Terastallized
         elif battle.opponent_active_pokemon.is_terastallized != last_turn.opponent_active_pokemon.is_terastallized:
-            #HUMAN TERA
-            message = chat.send_message("Uh oh, your opponent just terastallized! This changes their pokemon's type. say your reaction"+end_prompt)
-        else:
-            return 0
-        await self.ps_client.send_message(message.text, battle.battle_tag)
+            message = chat.send_message(
+                f"Uh oh, your opponent just Terastallized! This changes their Pokémon's type. Say your reaction{end_prompt}"
+            )
+
+        # Check if player's Pokémon changed
+        elif self.last_active_pokemon != current_active_pokemon:
+            message = chat.send_message(
+                f"You switched to {current_active_pokemon}. Say something confident about your new Pokémon!{end_prompt}"
+            )
+
+        # Check if opponent's Pokémon changed
+        elif self.last_opponent_pokemon != current_opponent_pokemon:
+            message = chat.send_message(
+                f"Your opponent switched to {current_opponent_pokemon}. Say something snarky about it!{end_prompt}"
+            )
+
+        # Update last seen Pokémon
+        self.last_active_pokemon = current_active_pokemon
+        self.last_opponent_pokemon = current_opponent_pokemon
+
+        # Send message if there is one
+        if message:
+            await self.ps_client.send_message(message.text, battle.battle_tag)
 
 
 async def main():
@@ -62,13 +90,13 @@ async def main():
         )
 
     #Challenges me
-    await player.send_challenges("Elytrix", n_challenges=1)
+    await player.send_challenges("mdominicis", n_challenges=1)
 
 
 
 if __name__ == "__main__":
     #Sets api key and creates a "chat" which trash_talk will use
-    client = genai.Client(api_key="AIzaSyDY50hm-IIwxEgH9hvNEk9ews7Het3v1Qw")
+    client = genai.Client(api_key="")
     chat = client.chats.create(model="gemini-2.0-flash")
     
     asyncio.get_event_loop().run_until_complete(main())
