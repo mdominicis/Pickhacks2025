@@ -3,12 +3,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-from collections import deque, defaultdict
 import random
 import asyncio
 import os
 from poke_env.player.player import Player
-from poke_env.player.random_player import RandomPlayer
 from pokemon_rb_local import RuleBasedPokemonAI
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,14 +20,6 @@ random.seed(42)
 os.environ["POKE_ENV_SERVER_URL"] = "http://localhost:8000"
 os.environ["POKE_ENV_SERVER_HOST"] = "localhost"
 os.environ["POKE_ENV_SERVER_PORT"] = "8000"
-
-class MaxDamagePlayer(Player):
-    def choose_move(self, battle):
-        if battle.available_moves:
-            best_move = max(battle.available_moves, key=lambda move: move.base_power)
-            return self.create_order(best_move)
-        else:
-            return self.choose_random_move(battle)
 
 class DQNNetwork(nn.Module):
     def __init__(self, input_size, output_size, hidden_size=256):
@@ -738,10 +728,7 @@ async def train_model(num_battles=100):
         print("Continuing training with existing model")
     else:
         print("Starting fresh training")
-        
-    max_damage_opponent = MaxDamagePlayer(
-        battle_format="gen9randombattle"
-    )
+
     
     print(f"Connecting to local Pokémon Showdown server as configured in environment variables")
     
@@ -768,29 +755,8 @@ async def evaluate_model(num_battles=50):
 
     load_model(rl_player.policy_net)
     
-    rl_player.wins = 0
-    rl_player.losses = 0
-    rl_player.battles_played = 0
-    
-    random_opponent = RandomPlayer(
-        battle_format="gen9randombattle"
-    )
-    
-    max_damage_opponent = MaxDamagePlayer(
-        battle_format="gen9randombattle"
-    )
-    
-    print("Evaluating against Random Player...")
-    await max_damage_opponent.battle_against(rl_player, n_battles=num_battles//2)
-    random_win_rate = rl_player.n_won_battles / (num_battles) * 100
-    print(f"Win rate against Max Damage Player: {random_win_rate:.2f}%")
-    
-    rl_player.wins = 0
-    rl_player.losses = 0
-    rl_player.battles_played = 0
-    
     print("Evaluating against RB Player...")
-    await rb_player.battle_against(rl_player, n_battles=num_battles//2)
+    await rb_player.battle_against(rl_player, n_battles=num_battles)
     rb_win_rate = rl_player.n_won_battles / (num_battles) * 100
     print(f"rl won battles: {rl_player.n_won_battles}")
     print(f"num battles: {num_battles}")
